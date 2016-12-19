@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python2
 # -*- coding: utf8 -*-
 import _init_path
 import os.path
@@ -158,10 +158,10 @@ class MainWindow(QMainWindow, WindowMixin):
                 'Ctrl+q', 'openAnnotation', u'Open Annotation')
 
         openNextImg = action('&Next Image', self.openNextImg,
-                'n', 'next', u'Open Next')
+                ('n', 'w'), 'next', u'Open Next')
 
         openPrevImg = action('&Prev Image', self.openPrevImg,
-                'p', 'prev', u'Open Prev')
+                ('p', 'q'), 'prev', u'Open Prev')
 
         save = action('&Save', self.saveFile,
                 'Ctrl+S', 'save', u'Save labels to file', enabled=False)
@@ -181,11 +181,15 @@ class MainWindow(QMainWindow, WindowMixin):
                 'Ctrl+J', 'edit', u'Move and edit Boxs', enabled=False)
 
         create = action('Create\nRectBox', self.createShape,
-                'Ctrl+N', 'new', u'Draw a new Box', enabled=False)
+                ('Ctrl+N', 'c'), 'new', u'Draw a new Box', enabled=False)
         delete = action('Delete\nRectBox', self.deleteSelectedShape,
                 'Delete', 'delete', u'Delete', enabled=False)
         copy = action('&Duplicate\nRectBox', self.copySelectedShape,
-                'Ctrl+D', 'copy', u'Create a duplicate of the selected Box',
+                ('Ctrl+D', 'd'), 'copy', u'Create a duplicate of the selected Box',
+                enabled=False)
+
+        copyPrev = action('Copy from pr&evImg', self.copyFromPrevious,
+                'e', 'copy', u'Load shapes from prevImg',
                 enabled=False)
 
         advancedMode = action('&Advanced Mode', self.toggleAdvancedMode,
@@ -257,7 +261,7 @@ class MainWindow(QMainWindow, WindowMixin):
         # Store actions for further handling.
         self.actions = struct(save=save, saveAs=saveAs, open=open, close=close,
                 lineColor=color1, fillColor=color2,
-                create=create, delete=delete, edit=edit, copy=copy,
+                create=create, delete=delete, edit=edit, copy=copy, copyPrev=copyPrev,
                 createMode=createMode, editMode=editMode, advancedMode=advancedMode,
                 shapeLineColor=shapeLineColor, shapeFillColor=shapeFillColor,
                 zoom=zoom, zoomIn=zoomIn, zoomOut=zoomOut, zoomOrg=zoomOrg,
@@ -265,7 +269,7 @@ class MainWindow(QMainWindow, WindowMixin):
                 zoomActions=zoomActions,
                 fileMenuActions=(open,opendir,save,saveAs,close,quit),
                 beginner=(), advanced=(),
-                editMenu=(edit, copy, delete, None, color1, color2),
+                editMenu=(edit, copy, copyPrev, delete, None, color1, color2),
                 beginnerContext=(create, edit, copy, delete),
                 advancedContext=(createMode, editMode, edit, copy,
                     delete, shapeLineColor, shapeFillColor),
@@ -415,6 +419,7 @@ class MainWindow(QMainWindow, WindowMixin):
         self.dirty = False
         self.actions.save.setEnabled(False)
         self.actions.create.setEnabled(True)
+        self.actions.copyPrev.setEnabled(True)
 
     def toggleActions(self, value=True):
         """Enable/Disable widgets which depend on an opened image."""
@@ -598,8 +603,29 @@ class MainWindow(QMainWindow, WindowMixin):
                     u'<b>%s</b>' % e)
             return False
 
+    def copyFromPrevious(self):
+        if self.filename is None:
+            return
+
+        lastIndex = self.mImgList.index(self.filename) - 1
+        if lastIndex < 0:
+            return
+
+        filename = self.mImgList[lastIndex]
+
+        if self.usingPascalVocFormat is True and \
+                        self.defaultSaveDir is not None:
+            basename = os.path.basename(os.path.splitext(filename)[0]) + '.xml'
+            xmlPath = os.path.join(self.defaultSaveDir, basename)
+            self.loadPascalXMLByFilename(xmlPath)
+            self.setDirty()
+
+
     def copySelectedShape(self):
-        self.addLabel(self.canvas.copySelectedShape())
+        l = self.canvas.selectedShape.label
+        shape = self.canvas.copySelectedShape()
+        shape.label = l
+        self.addLabel(shape)
         #fix copy and delete
         self.shapeSelectionChanged(True)
 
@@ -879,6 +905,10 @@ class MainWindow(QMainWindow, WindowMixin):
             self.fileListWidget.addItem(item)
 
     def openPrevImg(self, _value=False):
+        if self.autoSaving is True and self.defaultSaveDir is not None:
+            if self.dirty is True and self.hasLabels():
+                self.saveFile()
+
         if not self.mayContinue():
             return
 
